@@ -5,6 +5,7 @@ import pygame
 from os import listdir
 from os.path import isfile, join
 pygame.init()
+pygame.font.init()
 
 pygame.display.set_caption("Platformer")
 
@@ -14,6 +15,8 @@ FPS = 60
 PLAYER_VEL = 5
 
 window = pygame.display.set_mode((WIDTH, HEIGHT))
+
+font = pygame.font.Font('never.ttf', 32)
 
 def flip(sprites):
     return [pygame.transform.flip(sprite, True, False) for sprite in sprites]
@@ -51,6 +54,12 @@ def get_block(size):
     surface.blit(image, (0, 0), rect)
     return pygame.transform.scale2x(surface)
 
+def draw_text(text, text_col, x, y):
+    text_surface = font.render(text, True, text_col)
+    #textRect = text_surface.get_rect()
+    #textRect.center = (x, y)
+    window.blit(text_surface, (20,20))
+
 
 class Player(pygame.sprite.Sprite):
     COLOR = (255, 0, 0)
@@ -69,6 +78,9 @@ class Player(pygame.sprite.Sprite):
         self.animation_count = 0
         self.fall_count = 0
         self.jump_count = 0
+        self.hit = False
+        self.hit_count = 0
+        self.health = 100
 
     def jump(self):
         self.y_vel = -self.GRAVITY * 8
@@ -81,6 +93,11 @@ class Player(pygame.sprite.Sprite):
     def move(self, dx, dy):
         self.rect.x += dx
         self.rect.y += dy
+
+    def make_hit(self):
+        self.hit = True
+        self.hit_count = 0
+        self.health -= 1
 
     def move_left(self, vel):
         self.x_vel = -vel
@@ -98,6 +115,13 @@ class Player(pygame.sprite.Sprite):
     def loop(self, fps):
         self.y_vel += min(1, (self.fall_count / fps ) * self.GRAVITY)
         self.move(self.x_vel,self.y_vel)
+        
+        if self.hit:
+            self.hit_count += 1
+        if self.hit_count > FPS/2 :
+            self.hit = False
+            self.hit_count = 0
+
         self.fall_count += 1
         self.update_sprite()
 
@@ -116,6 +140,8 @@ class Player(pygame.sprite.Sprite):
 
     def update_sprite(self):
         sprite_sheet = "idle"
+        if self.hit:
+            sprite_sheet = "hit"
         if self.y_vel < 0:
             if self.jump_count == 1:
                 sprite_sheet = "jump"
@@ -215,6 +241,8 @@ def draw(window, background, bg_image, player, objects, offset_x):
 
     player.draw(window, offset_x)
 
+    draw_text("HP: " +str(player.health), (0,0,0), 30, 30)
+
     pygame.display.update()
 
 def handle_vertical_collision(player, objects, dy):
@@ -228,7 +256,7 @@ def handle_vertical_collision(player, objects, dy):
                 player.rect.top = obj.rect.bottom
                 player.hit_head()
 
-        collided_objects.append(obj)
+            collided_objects.append(obj)
 
     return collided_objects
 
@@ -258,7 +286,11 @@ def handle_move(player, objects):
     if (keys[pygame.K_RIGHT] and not collide_right):
         player.move_right(PLAYER_VEL)
     
-    handle_vertical_collision(player, objects, player.y_vel)
+    vertical_collide = handle_vertical_collision(player, objects, player.y_vel)
+    to_check = [collide_left, collide_right, *vertical_collide]
+    for obj in to_check:
+        if obj and obj.name == "fire":
+            player.make_hit()
 
 
 def main(window):
@@ -267,14 +299,16 @@ def main(window):
 
     block_size = 96
 
+    #game = Game()
     player = Player(100,100, 50, 50)
     fire = Fire(100, HEIGHT - block_size - 64, 16, 32)
     fire.on()
     floor = [Block(i * block_size, HEIGHT - block_size, block_size) for i in range( -WIDTH // block_size, WIDTH * 2 // block_size)]
 
     objects = [*floor, 
-               Block(0, HEIGHT - block_size*2, block_size), 
-               Block(block_size*3, HEIGHT - block_size*4, block_size), fire]
+               Block(0, HEIGHT - block_size*2, block_size),
+                Block(block_size*5, HEIGHT - block_size*2, block_size),
+               Block(block_size*3, HEIGHT - block_size*4, block_size), fire] 
 
     offset_x = 0
     scroll_area_width = 200
@@ -296,6 +330,8 @@ def main(window):
         fire.loop()
         handle_move(player, objects)
         draw(window, background, bg_image, player, objects, offset_x)
+
+
 
         if ((player.rect.right - offset_x >= WIDTH - scroll_area_width) and player.x_vel > 0) or (
             (player.rect.left - offset_x <= scroll_area_width) and player.x_vel < 0):
