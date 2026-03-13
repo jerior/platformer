@@ -97,6 +97,43 @@ class Block(Object):
         self.mask = pygame.mask.from_surface(self.image)
 
 
+class Fruit(Object):
+    ANIMATION_DELAY = 3
+
+    def __init__(self, x, y, width, height):
+        super().__init__(x, y, width, height, name="fruit")
+        self.rect  = pygame.Rect(x, y, width, height)
+        self.fruit = load_sprite_sheets("Items", "Fruits", width, height)
+        fruit_names = ["Apple", "Bananas", "Strawberry", "Cherries", "Pineapple", "Kiwi", "Orange", "Melon"]
+        #randomizer by name
+        rnd_fruit_name = random.choice(fruit_names)
+        print(rnd_fruit_name)
+        self.image = self.fruit[rnd_fruit_name][0]
+        self.mask  = pygame.mask.from_surface(self.image)
+        self.animation_name  = rnd_fruit_name
+        self.animation_count = 0
+        self.deleted = False
+
+    def on_pickup(self, player):
+        self.animation_name = "Collected"
+        self.animation_count = 0
+        self.mask = None
+        player.collect_fruit()
+        
+
+    def loop(self):
+        sprites = self.fruit[self.animation_name]
+        idx = (self.animation_count // self.ANIMATION_DELAY) % len(sprites)
+        self.image = sprites[idx]
+        self.animation_count += 1
+        self.rect = self.image.get_rect(topleft=(self.rect.x, self.rect.y))
+        self.mask = pygame.mask.from_surface(self.image)
+        if self.animation_count >= self.ANIMATION_DELAY > len(sprites):
+            self.animation_count = 0
+        if self.animation_name == "Collected" and self.animation_count>= self.ANIMATION_DELAY * 6:
+            self.deleted = True
+            return False
+
 class Fire(Object):
     ANIMATION_DELAY = 3
 
@@ -132,7 +169,7 @@ class GoalPost(Object):
     FLAG_H  = 34
 
     def __init__(self, x: int, block_size: int):
-        pole_h  = block_size * 5
+        pole_h  = block_size * 3
         total_w = self.POLE_W + self.FLAG_W + 6
         px      = x + block_size // 2 - self.POLE_W // 2
         py      = HEIGHT - block_size - pole_h
@@ -152,17 +189,6 @@ class GoalPost(Object):
         ]
         pygame.draw.polygon(surf, ( 50, 210,  80), pts)
         pygame.draw.polygon(surf, ( 20, 150,  40), pts, 2)
-
-        # Small star on the flag
-        cx = self.POLE_W + 3 + self.FLAG_W // 3
-        cy = 6 + self.FLAG_H // 2
-        for angle in range(0, 360, 72):
-            ax = cx + int(10 * math.cos(math.radians(angle - 90)))
-            ay = cy + int(10 * math.sin(math.radians(angle - 90)))
-            bx = cx + int( 4 * math.cos(math.radians(angle - 90 + 36)))
-            by = cy + int( 4 * math.sin(math.radians(angle - 90 + 36)))
-            pygame.draw.line(surf, (255, 255, 150), (cx, cy), (ax, ay), 2)
-            pygame.draw.line(surf, (255, 255, 150), (cx, cy), (bx, by), 1)
 
         self.image = surf
         self.mask  = pygame.mask.from_surface(self.image)
@@ -216,6 +242,12 @@ class Player(pygame.sprite.Sprite):
         self.hit = True
         self.hit_count = 0
         self.health -= 10
+
+    def collect_fruit(self):
+        if self.health < 90:
+            self.health += 10
+        if self.health >= 90:
+            self.health = 100
 
     def landed(self):
         self.y_vel = self.fall_count = self.jump_count = 0
@@ -298,6 +330,16 @@ def collide(player, objects, dx):
     return hit
 
 
+def handle_loots(player, fruits):
+    for fruit in fruits:
+        if fruit.deleted:
+            fruits.remove(fruit)
+
+    collided_fruit = collide(player, fruits, 0)
+    if (collided_fruit and collided_fruit.animation_name != "Collected"):
+        collided_fruit.on_pickup(player)
+
+
 def handle_move(player, objects):
     keys = pygame.key.get_pressed()
     player.x_vel = 0
@@ -309,6 +351,9 @@ def handle_move(player, objects):
     for obj in [cl, cr, *vc]:
         if obj and obj.name == "fire":
             player.make_hit()
+
+    return vc
+ 
     if player.rect.top > HEIGHT:
         player.health = 0
 
@@ -332,6 +377,7 @@ def generate_level(level_num: int, block_size: int) -> dict:
       floor_blocks    – Block list (floor row, with holes)
       platform_blocks – Block list (floating platforms)
       fires           – Fire list
+      fruits          – Fruits list 
       goal            – GoalPost object
       level_width     – int, total pixel width of the level
       all_objects     – flat list of every collidable object (for collision)
@@ -346,6 +392,7 @@ def generate_level(level_num: int, block_size: int) -> dict:
     hole_chance = min(0.18 + level_num * 0.03, 0.40)   # chance to start a gap
     max_hole_w  = min(2 + (level_num - 1) // 2, 4)     # max gap width (grows over levels)
     fire_chance = min(0.08 + level_num * 0.03, 0.28)   # fire per eligible floor column
+    fruit_chance = min(0.08 + level_num * 0.03, 0.28)   # fire per eligible floor column
 
     SAFE_START = 4   # solid columns guaranteed at the start
     SAFE_END   = 4   # solid columns guaranteed at the end
@@ -434,6 +481,23 @@ def generate_level(level_num: int, block_size: int) -> dict:
         c += 1
 
     # ------------------------------------------------------------------ #
+    # 3+. Fruits — only on solid floor, at least 1 block from any gap edge   #
+    # ------------------------------------------------------------------ #
+    fruits: list[Fruit] = []
+
+    for c in sorted(solid_cols):
+        if c < SAFE_START + 1 or c >= total_cols - SAFE_END - 1:
+            continue
+        if random.random() < fruit_chance:
+            rnd_height_up = random.randint(1, 6)
+            fruit_x = c * bs + (bs - 32) // 2         # centre 32-px sprite in 96-px block
+            fruit_y = HEIGHT - bs - 64 * rnd_height_up   # 64 = rendered fire height after scale2x 
+            #HEIGHT - bs - height_blocks * bs
+            f = Fruit(fruit_x, fruit_y, 32, 32)
+            fruits.append(f)
+
+
+    # ------------------------------------------------------------------ #
     # 4. Fire — only on solid floor, at least 1 block from any gap edge   #
     # ------------------------------------------------------------------ #
     fires: list[Fire] = []
@@ -463,6 +527,7 @@ def generate_level(level_num: int, block_size: int) -> dict:
         "floor_blocks":    floor_blocks,
         "platform_blocks": platform_blocks,
         "fires":           fires,
+        "fruits":          fruits,
         "goal":            goal,
         "level_width":     level_width,
         "all_objects":     all_objects,
@@ -710,6 +775,7 @@ class Game:
 
         self.level_width     = lvl["level_width"]
         self.fires           = lvl["fires"]
+        self.fruits          = lvl["fruits"]
         self.goal            = lvl["goal"]
         self.objects         = lvl["all_objects"]
         self.offset_x        = 0
@@ -786,7 +852,10 @@ class Game:
         self.player.loop(FPS)
         for fire in self.fires:
             fire.loop()
+        for fruits in self.fruits:
+            fruits.loop()
         handle_move(self.player, self.objects)
+        handle_loots(self.player, self.fruits)
 
         # Death check
         if self.player.health <= 0:
@@ -794,14 +863,27 @@ class Game:
             self._transition_timer = 0
             return
 
+        # collectiong loot
+        #if pygame.sprite.collide_mask(self.player, self.fruits):
+        #    print("Loot!")
+
         # Level-complete check: player touches the goal post
-        if pygame.sprite.collide_mask(self.player, self.goal):
+        #if pygame.sprite.collide_mask(self.player, self.goal):
+        #    print("Level complete!")
+        #    self._transition       = "complete"
+        #    self._transition_timer = 0
+        #    return
+        
+        # Level-complete check: player touches the right scene bound
+        p = self.player
+        if (p.rect.right >= WIDTH * LEVEL_SCREENS):
+            print("Level complete!")
             self._transition       = "complete"
             self._transition_timer = 0
             return
 
         # Horizontal scrolling (clamped to level bounds)
-        p = self.player
+
         if ((p.rect.right - self.offset_x >= WIDTH - self.SCROLL_AREA_WIDTH) and p.x_vel > 0) or \
            ((p.rect.left  - self.offset_x <= self.SCROLL_AREA_WIDTH)          and p.x_vel < 0):
             self.offset_x = max(0, min(self.offset_x + p.x_vel,
@@ -900,6 +982,8 @@ class Game:
         self._draw_background()
         for obj in self.objects:
             obj.draw(self.window, self.offset_x)
+        for fruit in self.fruits:
+            fruit.draw(self.window, self.offset_x)
         self.player.draw(self.window, self.offset_x)
         self._draw_hud()
         if self._transition:
