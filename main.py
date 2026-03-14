@@ -797,7 +797,10 @@ class Game:
         """Generate a fresh level and (re)create the player."""
         bs  = self.BLOCK_SIZE
         lvl = generate_level(self.level, bs)
-        music = ["STREAMING-a-little-bit-pecan-pie-main-version-32979-02-01.mp3", "STREAMING-cerebral-nugget-ian-aisling-main-version-32888-03-18.mp3"]
+        music = ["STREAMING-a-little-bit-pecan-pie-main-version-32979-02-01.mp3", 
+                 "STREAMING-cerebral-nugget-ian-aisling-main-version-32888-03-18.mp3", 
+                 "STREAMING-masho-ian-aisling-main-version-32845-02-16.mp3", 
+                 "STREAMING-tank-tank-sulyya-main-version-32899-02-31.mp3"]
 
         mixer.music.load(join("assets", "sounds", random.choice(music)))
         mixer.music.play()
