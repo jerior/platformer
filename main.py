@@ -56,11 +56,22 @@ def load_sprite_sheets(dir1, dir2, width, height, direction=False):
     return all_sprites
 
 
-def get_block(size):
+coordinates_dict = {
+    'green': (96, 0),
+    'orange': (96, 64),
+    'pink': (96, 128),
+    'brick': (272, 64),
+    'stone': (192, 64),
+    'gold': (272, 128)
+}
+
+def get_block(size, type="gold"):
     path = join("assets", "Terrain", "Terrain.png")
     image = pygame.image.load(path).convert_alpha()
     surface = pygame.Surface((size, size), pygame.SRCALPHA, 32)
-    rect = pygame.Rect(96, 0, size, size)
+    x = coordinates_dict[type][0]
+    y = coordinates_dict[type][1]
+    rect = pygame.Rect(x, y, size, size)
     surface.blit(image, (0, 0), rect)
     return pygame.transform.scale2x(surface)
 
@@ -97,10 +108,11 @@ class Object(pygame.sprite.Sprite):
 
 
 class Block(Object):
-    def __init__(self, x, y, size):
+    def __init__(self, x, y, size, block_type = "green"):
         super().__init__(x, y, size, size)
-        self.image.blit(get_block(size), (0, 0))
+        self.image.blit(get_block(size, block_type), (0, 0))
         self.mask = pygame.mask.from_surface(self.image)
+        self.block_type = block_type
 
 
 class Fruit(Object):
@@ -429,7 +441,8 @@ def generate_level(level_num: int, block_size: int) -> dict:
             col       += 1
             solid_run += 1
 
-    floor_blocks = [Block(c * bs, HEIGHT - bs, bs) for c in sorted(solid_cols)]
+    floor_img = random.choice(["green", "orange", "pink"])
+    floor_blocks = [Block(c * bs, HEIGHT - bs, bs, floor_img) for c in sorted(solid_cols)]
 
     # ------------------------------------------------------------------ #
     # 2. Find every gap and its width                                     #
@@ -460,9 +473,10 @@ def generate_level(level_num: int, block_size: int) -> dict:
     def add_platform(start_col: int, width: int, height_blocks: int):
         """Place `width` blocks starting at start_col, height_blocks above floor."""
         plat_y = HEIGHT - bs - height_blocks * bs
+        platform_img = random.choice(["green", "orange", "pink", "brick", "stone", "gold"])
         for pc in range(width):
             cx = start_col + pc
-            platform_blocks.append(Block(cx * bs, plat_y, bs))
+            platform_blocks.append(Block(cx * bs, plat_y, bs, platform_img))
             occupied_cols.add(cx)
 
     # Bridge every gap: centre a 2-block-wide platform above it,
@@ -640,7 +654,9 @@ class Menu:
         self.window  = window
         self.clock   = pygame.time.Clock()
         self.selected_index = 0
-        self.bg_image   = get_background("Blue.png")
+        #bg_image = ["Blue", "Brown", "Gray", "Green", "Pink", "Purple", "Yellow"] 
+        #self.bg_image   = get_background(random.choice(bg_image) + ".png")
+        self.bg_image    = get_background("Blue.png")
         self.overlay    = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         self.overlay.fill((5, 8, 20, 185))
         self.particles  = [Particle() for _ in range(60)]
@@ -760,7 +776,8 @@ class Game:
         self.window      = window
         self.clock       = pygame.time.Clock()
         self.sprite_name = sprite_name
-        self.bg_image    = get_background("Blue.png")
+        bg_image = ["Blue", "Brown", "Gray", "Green", "Pink", "Purple", "Yellow"] 
+        self.bg_image   = get_background(random.choice(bg_image) + ".png")
 
         self.score   = 0
         self.level   = 1
@@ -875,10 +892,6 @@ class Game:
             self._transition_timer = 0
             return
 
-        # collectiong loot
-        #if pygame.sprite.collide_mask(self.player, self.fruits):
-        #    print("Loot!")
-
         # Level-complete check: player touches the goal post
         #if pygame.sprite.collide_mask(self.player, self.goal):
         #    print("Level complete!")
@@ -892,6 +905,12 @@ class Game:
             print("Level complete!")
             sound_complete.play()
             self._transition       = "complete"
+            self._transition_timer = 0
+            return
+
+        # Falling check
+        if self.player.rect.top >= HEIGHT:
+            self._transition       = "dead"
             self._transition_timer = 0
             return
 
