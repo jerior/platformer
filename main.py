@@ -4,9 +4,11 @@ import math
 import pygame
 from os import listdir
 from os.path import isfile, join
+from pygame import mixer
 
 pygame.init()
 pygame.font.init()
+mixer.init() #Initialzing pyamge mixer
 
 pygame.display.set_caption("Platformer")
 
@@ -20,6 +22,10 @@ window = pygame.display.set_mode((WIDTH, HEIGHT))
 font_large  = pygame.font.Font('never.ttf', 72)
 font_medium = pygame.font.Font('never.ttf', 48)
 font_small  = pygame.font.Font('never.ttf', 28)
+
+bite_sound = mixer.Sound(join("assets", "sounds", 'cartoon-biting.mp3'))
+sound_complete = mixer.Sound(join("assets", "sounds", 'STREAMING-epic-win-music-sting-jeff-kaale-1-00-02.mp3'))
+sound_ouch = mixer.Sound(join("assets", "sounds", 'ough_1.mp3'))
 
 
 # ---------------------------------------------------------------------------
@@ -242,12 +248,14 @@ class Player(pygame.sprite.Sprite):
         self.hit = True
         self.hit_count = 0
         self.health -= 10
+        sound_ouch.play()
 
     def collect_fruit(self):
         if self.health < 90:
             self.health += 10
         if self.health >= 90:
             self.health = 100
+        bite_sound.play()
 
     def landed(self):
         self.y_vel = self.fall_count = self.jump_count = 0
@@ -772,6 +780,10 @@ class Game:
         """Generate a fresh level and (re)create the player."""
         bs  = self.BLOCK_SIZE
         lvl = generate_level(self.level, bs)
+        music = ["STREAMING-a-little-bit-pecan-pie-main-version-32979-02-01.mp3", "STREAMING-cerebral-nugget-ian-aisling-main-version-32888-03-18.mp3"]
+
+        mixer.music.load(join("assets", "sounds", random.choice(music)))
+        mixer.music.play()
 
         self.level_width     = lvl["level_width"]
         self.fires           = lvl["fires"]
@@ -878,6 +890,7 @@ class Game:
         p = self.player
         if (p.rect.right >= WIDTH * LEVEL_SCREENS):
             print("Level complete!")
+            sound_complete.play()
             self._transition       = "complete"
             self._transition_timer = 0
             return
